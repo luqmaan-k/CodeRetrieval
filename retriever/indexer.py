@@ -1,72 +1,89 @@
 import os
 import json
 from pathlib import Path
-from tree_sitter import Language, Parser, Query, QueryCursor
-import tree_sitter_python as tspython
-import tree_sitter_java as tsjava
+from tree_sitter import Query, QueryCursor
+from retriever.parser_setup import get_parsers, get_languages
 
-def load_queries():
-    """Loads tag queries for Python and Java."""
-    py_query_path = Path("retriever/grammars/tree-sitter-python/queries/tags.scm")
-    java_query_path = Path("retriever/grammars/tree-sitter-java/queries/tags.scm")
-    
-    with open(py_query_path, 'r') as f:
-        py_query_scm = f.read()
-    with open(java_query_path, 'r') as f:
-        java_query_scm = f.read()
+# Mapping of file extensions to supported languages
+EXTENSION_TO_LANGUAGE = {
+    '.py': 'python',
+    '.java': 'java',
+    '.js': 'javascript',
+    '.jsx': 'javascript',
+    '.cpp': 'cpp',
+    '.cc': 'cpp',
+    '.cxx': 'cpp',
+    '.h': 'cpp',
+    '.hpp': 'cpp',
+    '.cs': 'c_sharp'
+}
+
+def load_queries(languages):
+    """Loads tag queries for all supported languages."""
+    queries = {}
+    for lang in languages:
+        # Map language name to folder name (if different)
+        folder_name = lang.replace('_', '-')
+        query_path = Path(f"retriever/grammars/tree-sitter-{folder_name}/queries/tags.scm")
         
-    return py_query_scm, java_query_scm
+        if query_path.exists():
+            with open(query_path, 'r') as f:
+                queries[lang] = f.read()
+        else:
+            print(f"Warning: No tags.scm found for {lang} at {query_path}")
+            
+    return queries
 
 def index_codebase(root_dir):
     """
-    Traverses the codebase, parses Python and Java files, and extracts definitions.
+    Traverses the codebase, parses supported source files, and extracts definitions.
     """
-    PY_LANGUAGE = Language(tspython.language())
-    JAVA_LANGUAGE = Language(tsjava.language())
+    parsers = get_parsers()
+    languages = get_languages()
+    query_scms = load_queries(languages.keys())
     
-    py_parser = Parser(PY_LANGUAGE)
-    java_parser = Parser(JAVA_LANGUAGE)
-    
-    py_query_scm, java_query_scm = load_queries()
-    py_query = Query(PY_LANGUAGE, py_query_scm)
-    java_query = Query(JAVA_LANGUAGE, java_query_scm)
+    # Pre-compile queries
+    queries = {}
+    for lang, scm in query_scms.items():
+        try:
+            queries[lang] = Query(languages[lang], scm)
+        except Exception as e:
+            print(f"Error compiling query for {lang}: {e}")
     
     index = []
     
-    for root, _, files in os.walk(root_dir):
-        # Skip hidden directories and .venv
-        if any(part.startswith('.') for part in Path(root).parts) or 'venv' in root:
-            continue
-            
+    # Directories to ignore
+    IGNORE_DIRS = {'.git', '.venv', 'venv', '__pycache__', 'node_modules', 'build', 'dist'}
+    
+    for root, dirs, files in os.walk(root_dir):
+        # Modify dirs in-place to skip ignored directories
+        dirs[:] = [d for d in dirs if d not in IGNORE_DIRS and not d.startswith('.')]
+        
         for file in files:
             file_path = Path(root) / file
-            if file.endswith('.py'):
-                lang = 'python'
-                parser = py_parser
-                query = py_query
-            elif file.endswith('.java'):
-                lang = 'java'
-                parser = java_parser
-                query = java_query
-            else:
+            ext = file_path.suffix.lower()
+            
+            if ext not in EXTENSION_TO_LANGUAGE:
+                continue
+                
+            lang = EXTENSION_TO_LANGUAGE[ext]
+            if lang not in parsers or lang not in queries:
                 continue
             
-            print(f"Indexing {file_path}...")
+            parser = parsers[lang]
+            query = queries[lang]
+            
+            print(f"Indexing {file_path} ({lang})...")
             
             try:
                 with open(file_path, 'rb') as f:
                     code = f.read()
                 
                 tree = parser.parse(code)
-                # In 0.25.2, QueryCursor needs the query in __init__
                 cursor = QueryCursor(query)
                 captures_dict = cursor.captures(tree.root_node)
                 
-                # We need to find definitions and their associated names.
-                # In tags.scm, a definition is often tagged like @definition.function
-                # and the name is tagged as @name.
-                
-                # Map all captured nodes by their byte range to associate @name with @definition.*
+                # Group nodes by their byte range to associate tags
                 nodes_by_range = {}
                 
                 for tag_name, nodes in captures_dict.items():
@@ -80,24 +97,17 @@ def index_codebase(root_dir):
                     node = info['node']
                     tags = info['tags']
                     
+                    # Look for definition tags
                     definition_tag = next((t for t in tags if t.startswith('definition.')), None)
                     
                     if definition_tag:
-                        # If this node itself is tagged @name, great.
-                        # Otherwise, we might need to look for a @name tag in the SAME range 
-                        # (which we just did by grouping by range).
-                        
                         name = "unknown"
                         if 'name' in tags:
                             name = code[node.start_byte:node.end_byte].decode('utf8', errors='ignore')
                         else:
-                            # If no @name tag on this node, it might be that the @name tag 
-                            # was on a child node (e.g. the identifier). 
-                            # However, our current grouping only looks at the exact same range.
-                            
-                            # Let's try to find an identifier child if it's a known definition type
+                            # Fallback: look for identifier children
                             for child in node.children:
-                                if child.type == 'identifier' or child.type == 'type_identifier':
+                                if 'identifier' in child.type or 'name' in child.type:
                                     name = code[child.start_byte:child.end_byte].decode('utf8', errors='ignore')
                                     break
                         

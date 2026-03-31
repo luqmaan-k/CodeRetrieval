@@ -9,7 +9,7 @@ models/
 
 # Build & Grammars
 retriever/build/
-retriever/grammars/*/.git
+retriever/grammars/tree-sitter-*/
 
 # Documentation (Internal/Local only - DO NOT TRACK)
 project_info/

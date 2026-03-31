@@ -1,27 +1,22 @@
 from tree_sitter import Language, Parser
-from pathlib import Path
+import tree_sitter_python as tspython
+import tree_sitter_java as tsjava
 
-# Path to the compiled library
-LIB_PATH = Path("retriever/build/my-languages.so")
-GRAMMAR_DIR = Path("retriever/grammars")
-
-def setup_parsers():
-    # Ensure build dir exists
-    LIB_PATH.parent.mkdir(parents=True, exist_ok=True)
+def get_parsers():
+    """
+    Initializes and returns Tree-sitter parsers for Python and Java.
+    """
+    PY_LANGUAGE = Language(tspython.language())
+    JAVA_LANGUAGE = Language(tsjava.language())
     
-    # Python and Java
-    # Note: Modern tree-sitter python package (tree-sitter-python) 
-    # usually provides the language object directly.
-    # However, for a custom build:
-    try:
-        import tree_sitter_python as tspython
-        import tree_sitter_java as tsjava
-        
-        # In newer tree-sitter, you can often just do:
-        # PY_LANGUAGE = Language(tspython.language())
-        print("Using pre-installed tree-sitter language packages.")
-    except ImportError:
-        print("Falling back to manual build (if needed)...")
+    py_parser = Parser(PY_LANGUAGE)
+    java_parser = Parser(JAVA_LANGUAGE)
+    
+    return {
+        'python': py_parser,
+        'java': java_parser
+    }
 
 if __name__ == "__main__":
-    setup_parsers()
+    parsers = get_parsers()
+    print("Parsers initialized successfully for Python and Java.")

@@ -37,14 +37,17 @@ def download_datasets():
     except Exception as e:
         print(f"Error fetching CoNaLa: {e}")
 
-    # 3. StackOverflow NER
-    print("Fetching StackOverflow NER...")
-    try:
-        ner = load_dataset("mrm8488/stackoverflow-ner")
-        ner["train"].to_json(DATA_DIR / "stackoverflow_ner_train.json")
-        print("StackOverflow NER saved.")
-    except Exception as e:
-        print(f"Error fetching NER: {e}")
+    # 4. CodeSearchNet (for Benchmarking)
+    print("Fetching CodeSearchNet (Python, Java, JS)...")
+    for lang in ["python", "java", "javascript"]:
+        try:
+            print(f"Fetching {lang}...")
+            csn = load_dataset("code_search_net", lang, trust_remote_code=True)
+            # Save a small subset of the 'test' split for benchmarking
+            csn["test"].select(range(min(len(csn["test"]), 1000))).to_json(DATA_DIR / f"csn_{lang}_test_subset.json")
+            print(f"CodeSearchNet {lang} test subset saved.")
+        except Exception as e:
+            print(f"Error fetching CSN {lang}: {e}")
 
 if __name__ == "__main__":
     download_datasets()

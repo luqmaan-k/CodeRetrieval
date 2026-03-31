@@ -25,17 +25,26 @@ class SearchEngine:
         
         print(f"Search Engine ready. Indexed {len(self.ast_index)} definitions.")
 
-    def query(self, user_input, top_k=5, fuzzy_threshold=70):
+    def query(self, user_input, top_k=5, fuzzy_threshold=70, verbose=False):
+        # Manually truncate input to stay safely within 512 tokens (leaving room for special tokens)
+        tokens = self.intent_tokenizer.encode(user_input, truncation=True, max_length=510, add_special_tokens=False)
+        user_input = self.intent_tokenizer.decode(tokens)
+        
         # 1. Classify Intent
         intent_results = self.intent_pipe(user_input)
         intent = intent_results[0]['label']
         
         # 2. Extract Entities
         ner_results = self.ner_pipe(user_input)
+        if verbose: print(f"Raw NER results: {ner_results}")
         
         # Mapping for entities
         targets = [ent['word'].strip() for ent in ner_results if ent['entity_group'] in ['Variable', 'Function', 'Class', 'Data_Structure', 'Code_Block']]
         
+        if verbose:
+            print(f"Detected Intent: {intent}")
+            print(f"Extracted Targets: {targets}")
+            
         if not targets:
             return []
 

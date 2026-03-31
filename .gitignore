@@ -1,0 +1,21 @@
+# Environments
+.venv/
+venv/
+__pycache__/
+
+# Data & Models
+data/
+models/
+
+# Build & Grammars
+retriever/build/
+retriever/grammars/*/.git
+
+# Documentation
+docs/
+
+# Misc
+.vscode/
+.idea/
+*.log
+uv.lock

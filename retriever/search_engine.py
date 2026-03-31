@@ -2,6 +2,7 @@ import json
 import torch
 from pathlib import Path
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModelForTokenClassification, pipeline
+from thefuzz import fuzz
 
 class SearchEngine:
     def __init__(self, intent_model_path, ner_model_path, ast_index_path):
@@ -24,40 +25,43 @@ class SearchEngine:
         
         print(f"Search Engine ready. Indexed {len(self.ast_index)} definitions.")
 
-    def query(self, user_input, top_k=5):
+    def query(self, user_input, top_k=5, fuzzy_threshold=70):
         # 1. Classify Intent
         intent_results = self.intent_pipe(user_input)
         intent = intent_results[0]['label']
         
         # 2. Extract Entities
         ner_results = self.ner_pipe(user_input)
-        print(f"Raw NER results: {ner_results}")
         
-        # In StackOverflow NER, tags are like 'Function', 'Variable', 'Class', 'Data_Structure', 'Language'
-        # Simple aggregation will strip the B-/I- prefixes
+        # Mapping for entities
         targets = [ent['word'].strip() for ent in ner_results if ent['entity_group'] in ['Variable', 'Function', 'Class', 'Data_Structure', 'Code_Block']]
         
-        print(f"Detected Intent: {intent}")
-        print(f"Extracted Targets: {targets}")
-        
         if not targets:
-            return "No specific code entities detected in query."
+            return []
 
-        # 3. Search AST Index
+        # 3. Search AST Index with Fuzzy Matching
         results = []
         for target in targets:
             for item in self.ast_index:
-                # Simple exact match for now; can be expanded to fuzzy
-                if target.lower() in item['name'].lower():
+                # Check match score
+                score = fuzz.partial_ratio(target.lower(), item['name'].lower())
+                
+                if score >= fuzzy_threshold:
                     # Filter by intent if specific
                     if intent == "Find_Function" and item['type'] not in ['function', 'method']:
-                        continue
+                        # Give some room for fuzzy but bias towards functions
+                        if score < 90: continue 
                     if intent == "Find_Class" and item['type'] != 'class':
-                        continue
+                        if score < 90: continue
                         
-                    results.append(item)
+                    # Add score to item for ranking
+                    item_copy = item.copy()
+                    item_copy['match_score'] = score
+                    results.append(item_copy)
         
-        # Remove duplicates and limit
+        # Sort by score and remove duplicates
+        results = sorted(results, key=lambda x: x['match_score'], reverse=True)
+        
         seen = set()
         unique_results = []
         for r in results:

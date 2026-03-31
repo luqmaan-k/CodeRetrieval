@@ -11,8 +11,8 @@ models/
 retriever/build/
 retriever/grammars/*/.git
 
-# Documentation
-docs/
+# Documentation (Internal/Local only - DO NOT TRACK)
+project_info/
 
 # Misc
 .vscode/

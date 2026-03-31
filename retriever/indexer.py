@@ -36,7 +36,7 @@ def load_queries(languages):
 
 def index_codebase(root_dir):
     """
-    Traverses the codebase, parses supported source files, and extracts definitions.
+    Traverses the codebase, parses supported source files, and extracts definitions using Query matches.
     """
     parsers = get_parsers()
     languages = get_languages()
@@ -81,45 +81,30 @@ def index_codebase(root_dir):
                 
                 tree = parser.parse(code)
                 cursor = QueryCursor(query)
-                captures_dict = cursor.captures(tree.root_node)
                 
-                # Group nodes by their byte range to associate tags
-                nodes_by_range = {}
+                # In 0.25.2, matches(node) returns list[tuple[int, dict[str, list[Node]]]]
+                matches = cursor.matches(tree.root_node)
                 
-                for tag_name, nodes in captures_dict.items():
-                    for node in nodes:
-                        node_range = (node.start_byte, node.end_byte)
-                        if node_range not in nodes_by_range:
-                            nodes_by_range[node_range] = {'node': node, 'tags': set()}
-                        nodes_by_range[node_range]['tags'].add(tag_name)
-                
-                for node_range, info in nodes_by_range.items():
-                    node = info['node']
-                    tags = info['tags']
+                for pattern_idx, captures in matches:
+                    # Captures is a dict mapping tag name to a list of nodes
+                    # Find the definition tag and the name tag
+                    definition_tag = next((t for t in captures.keys() if t.startswith('definition.')), None)
                     
-                    # Look for definition tags
-                    definition_tag = next((t for t in tags if t.startswith('definition.')), None)
-                    
-                    if definition_tag:
-                        name = "unknown"
-                        if 'name' in tags:
-                            name = code[node.start_byte:node.end_byte].decode('utf8', errors='ignore')
-                        else:
-                            # Fallback: look for identifier children
-                            for child in node.children:
-                                if 'identifier' in child.type or 'name' in child.type:
-                                    name = code[child.start_byte:child.end_byte].decode('utf8', errors='ignore')
-                                    break
+                    if definition_tag and 'name' in captures:
+                        def_node = captures[definition_tag][0]
+                        name_node = captures['name'][0]
+                        
+                        name = code[name_node.start_byte:name_node.end_byte].decode('utf8', errors='ignore')
                         
                         index.append({
                             'name': name,
                             'type': definition_tag.split('.')[-1],
                             'language': lang,
                             'file_path': str(file_path),
-                            'start_line': node.start_point[0] + 1,
-                            'end_line': node.end_point[0] + 1,
-                            'start_column': node.start_point[1],
-                            'end_column': node.end_point[1]
+                            'start_line': def_node.start_point[0] + 1,
+                            'end_line': def_node.end_point[0] + 1,
+                            'start_column': def_node.start_point[1],
+                            'end_column': def_node.end_point[1]
                         })
                         
             except Exception as e:

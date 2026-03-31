@@ -6,15 +6,18 @@ __pycache__/
 # Data & Models
 data/
 models/
+models/*.json
 
 # Build & Grammars
 retriever/build/
 retriever/grammars/tree-sitter-*/
+retriever/test_parsers.py
 
 # Documentation (Internal/Local only - DO NOT TRACK)
 project_info/
 
 # Misc
+demo/
 .vscode/
 .idea/
 *.log

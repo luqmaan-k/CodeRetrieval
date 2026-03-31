@@ -34,23 +34,24 @@ def get_csn_index(lang_name, data):
     for idx, item in enumerate(data):
         code = item['func_code_string'].encode('utf8')
         tree = parser.parse(code)
-        captures_dict = cursor.captures(tree.root_node)
+        matches = cursor.matches(tree.root_node)
         
-        # We just need to know which function name belongs to which index for ground truth
-        # CSN gives us the function name in 'func_name'
-        # But we index all definitions found in that snippet
-        for tag_name, nodes in captures_dict.items():
-            if tag_name.startswith('definition.'):
-                for node in nodes:
-                    name = code[node.start_byte:node.end_byte].decode('utf8', errors='ignore')
-                    index.append({
-                        'name': name,
-                        'type': tag_name.split('.')[-1],
-                        'csn_idx': idx, # Link back to the original CSN record
-                        'func_name': item['func_name'],
-                        'file_path': f"csn_{idx}", # Dummy for deduplication
-                        'start_line': 0
-                    })
+        for pattern_idx, captures in matches:
+            definition_tag = next((t for t in captures.keys() if t.startswith('definition.')), None)
+            
+            if definition_tag and 'name' in captures:
+                name_node = captures['name'][0]
+                def_node = captures[definition_tag][0]
+                
+                name = code[name_node.start_byte:name_node.end_byte].decode('utf8', errors='ignore')
+                index.append({
+                    'name': name,
+                    'type': definition_tag.split('.')[-1],
+                    'csn_idx': idx, # Link back to the original CSN record
+                    'func_name': item['func_name'],
+                    'file_path': f"csn_{idx}", # Dummy for deduplication
+                    'start_line': 0
+                })
     return index
 
 def evaluate():

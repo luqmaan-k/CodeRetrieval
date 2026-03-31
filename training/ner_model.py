@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 from transformers import (
     AutoTokenizer, 
@@ -11,20 +12,19 @@ from datasets import Dataset
 import torch
 
 def train_ner_model():
-    print("Initializing NER Model training...")
+    print("Initializing FULL-SCALE NER Model training...")
+    start_time = time.time()
     
     model_name = "microsoft/codebert-base"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     
-    # Load and Parse Data
+    # Load and Parse Full Data
     ner_path = Path("data/raw/stackoverflow_ner_train.json")
     raw_data = []
     unique_tags = set()
     
     with open(ner_path, 'r') as f:
-        # Limit to 5000 for testing/setup
-        for i, line in enumerate(f):
-            if i >= 5000: break
+        for line in f:
             item = json.loads(line)
             raw_data.append(item)
             unique_tags.update(item['ner_tags'])
@@ -33,6 +33,8 @@ def train_ner_model():
     label2id = {tag: i for i, tag in enumerate(labels)}
     id2label = {i: tag for tag, i in label2id.items()}
     
+    print(f"Training on full dataset of {len(raw_data)} samples.")
+
     def tokenize_and_align_labels(examples):
         tokenized_inputs = tokenizer(
             examples["tokens"], truncation=True, is_split_into_words=True, padding=False
@@ -44,11 +46,10 @@ def train_ner_model():
             label_ids = []
             for word_idx in word_ids:
                 if word_idx is None:
-                    label_ids.append(-100) # Special tokens
+                    label_ids.append(-100)
                 elif word_idx != previous_word_idx:
                     label_ids.append(label2id[label[word_idx]])
                 else:
-                    # Sub-words: either same label or -100 (standard is -100 to only train on first token)
                     label_ids.append(-100)
                 previous_word_idx = word_idx
             labels.append(label_ids)
@@ -57,7 +58,7 @@ def train_ner_model():
 
     # Create dataset
     dataset = Dataset.from_list(raw_data)
-    dataset = dataset.train_test_split(test_size=0.2)
+    dataset = dataset.train_test_split(test_size=0.1)
     tokenized_dataset = dataset.map(tokenize_and_align_labels, batched=True)
 
     # Initialize Model
@@ -72,9 +73,9 @@ def train_ner_model():
         output_dir="models/ner_checkpoints",
         eval_strategy="epoch",
         learning_rate=2e-5,
-        per_device_train_batch_size=8, # NER is more memory intensive per token
-        per_device_eval_batch_size=8,
-        num_train_epochs=1,
+        per_device_train_batch_size=16, # Increased for 16GB VRAM
+        per_device_eval_batch_size=16,
+        num_train_epochs=5, # More epochs for NER
         weight_decay=0.01,
         save_strategy="epoch",
         load_best_model_at_end=True,
@@ -90,12 +91,28 @@ def train_ner_model():
         data_collator=DataCollatorForTokenClassification(tokenizer=tokenizer),
     )
 
-    print("Starting NER training (test run)...")
-    trainer.train()
+    print("Starting full-scale NER training...")
+    train_result = trainer.train()
+    
+    end_time = time.time()
+    duration = end_time - start_time
     
     model_path = Path("models/ner_model_final")
     trainer.save_model(model_path)
-    print(f"NER model saved to {model_path}")
+    
+    stats = {
+        "model_type": "NER Model (CodeBERT)",
+        "samples": len(raw_data),
+        "epochs": 5,
+        "duration_seconds": duration,
+        "final_loss": train_result.training_loss,
+        "metrics": trainer.evaluate()
+    }
+    
+    print(f"NER model saved to {model_path}. Time: {duration/60:.2f} minutes.")
+    return stats
 
 if __name__ == "__main__":
-    train_ner_model()
+    stats = train_ner_model()
+    with open("models/ner_stats.json", "w") as f:
+        json.dump(stats, f, indent=2)

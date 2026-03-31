@@ -58,14 +58,19 @@ class SearchEngine:
                 if score >= fuzzy_threshold:
                     # Filter by intent if specific
                     if intent == "Find_Function" and item['type'] not in ['function', 'method']:
-                        # Give some room for fuzzy but bias towards functions
                         if score < 90: continue 
                     if intent == "Find_Class" and item['type'] != 'class':
                         if score < 90: continue
                         
+                    # Calculate final ranking score
+                    # Boost exact matches
+                    final_score = score
+                    if target.lower() == item['name'].lower():
+                        final_score += 10 # Perfect match bonus
+                        
                     # Add score to item for ranking
                     item_copy = item.copy()
-                    item_copy['match_score'] = score
+                    item_copy['match_score'] = final_score
                     results.append(item_copy)
         
         # Sort by score and remove duplicates

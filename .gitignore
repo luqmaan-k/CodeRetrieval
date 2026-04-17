@@ -17,6 +17,7 @@ retriever/test_parsers.py
 project_info/
 
 # Misc
+temp_scripts/
 demo/
 .vscode/
 .idea/

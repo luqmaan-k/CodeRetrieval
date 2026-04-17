@@ -53,7 +53,7 @@ def index_codebase(root_dir):
     index = []
     
     # Directories to ignore
-    IGNORE_DIRS = {'.git', '.venv', 'venv', '__pycache__', 'node_modules', 'build', 'dist'}
+    IGNORE_DIRS = {'.git', '.venv', 'venv', 'bak_venv', '__pycache__', 'node_modules', 'build', 'dist', 'grammars'}
     
     for root, dirs, files in os.walk(root_dir):
         # Modify dirs in-place to skip ignored directories
